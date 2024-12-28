@@ -1,0 +1,77 @@
+Шаг 1 создаем скрипт monitor_test.sh
+сам bash скрипт расположен в /usr/local/bin/
+
+#!/bin/bash
+
+# Переменные
+PROCESS_NAME="test"
+LOG_FILE="/var/log/monitoring.log"
+API_ENDPOINT="https://test.com/monitoring/test/api"
+LAST_PID_FILE="/tmp/test_process.pid"
+
+# Проверка, запущен ли процесс
+PROCESS_PID=$(pgrep "$PROCESS_NAME")
+
+# Функция для проверки доступности сервера
+check_server() {
+    if curl --output /dev/null --silent --head --fail "$API_ENDPOINT"; then
+        return 0
+    else
+        return 1
+    fi
+}
+
+# Если процесс запущен
+if [ -n "$PROCESS_PID" ]; then
+    # Если процесс запущен и его PID отличается от предыдущего сохраненного
+    if [ -f "$LAST_PID_FILE" ]; then
+        LAST_PID=$(cat "$LAST_PID_FILE")
+        if [ "$PROCESS_PID" -ne "$LAST_PID" ]; then
+            echo "$(date): Process '$PROCESS_NAME' was restarted. New PID: $PROCESS_PID" >> "$LOG_FILE"
+        fi
+    fi
+    # Обновляем файл с PID
+    echo "$PROCESS_PID" > "$LAST_PID_FILE"
+    
+    # Проверяем доступность сервера
+    if ! check_server; then
+        echo "$(date): Server $API_ENDPOINT is unreachable." >> "$LOG_FILE"
+    fi
+fi
+
+Шаг 2 Добавляем возможность исполнения
+sudo chmod +x /usr/local/bin/monitor_test.sh
+
+Шаг 3
+Создаем файл monitor_test.service
+расположен в /etc/systemd/system
+                                                
+[Unit]
+Description=Monitor process test
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/monitor_test.sh
+User=root
+
+[Install]
+WantedBy=multi-user.target
+
+Шаг 4
+Создаем таймер для сервиса monitor_test.timer
+расположен в /etc/systemd/system
+
+[Unit]
+Description=Run monitor_test script every minute
+Requires=monitor_test.service
+
+[Timer]
+Unit=monitor_test.service
+OnCalendar=*-*-* *:*:00
+
+[Install]
+WantedBy=timers.target
+
+
+
+
